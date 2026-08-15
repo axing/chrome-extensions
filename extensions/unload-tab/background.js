@@ -12,9 +12,18 @@ const FAVICON_TIMEOUT_MS = 1500;
 // (its 'favicon-delay' pref, 100ms on Chrome).
 const FAVICON_SETTLE_MS = 300;
 
+// How long the page may spend loading and greying the existing favicon before
+// giving up and using FALLBACK_ICON. Measured at ~20ms in practice.
+const FAVICON_READ_TIMEOUT_MS = 2000;
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// icons/inactive.png, recoloured white and inlined at 32px. Regenerate with:
+// Fallback marker: icons/inactive.png, recoloured white and inlined at 32px.
+// Used only when the tab's own favicon cannot be greyed — a cross-origin icon
+// served without CORS headers cannot be read into a canvas, either because the
+// load fails (crossOrigin set) or because toDataURL() throws on a tainted
+// canvas (crossOrigin unset). Both were confirmed against a real page.
+// Regenerate with:
 //
 //   magick icons/inactive.png -alpha extract \
 //     -morphology Dilate Disk:2.5 -resize 32x32 mask.png
@@ -32,7 +41,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // favicon when the <link> is swapped, and if that fetch fails it silently keeps
 // the old icon — which is what an extension URL does here. A data: URI cannot
 // fail and needs no web_accessible_resources entry.
-const ICON =
+const FALLBACK_ICON =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAQAAADZc7J/AAADUUlEQVRIx42VT2xVRRTGfzPzWv60rxChgYRapeU1UjAQUqpSjSQmrsCmgRBN2BqtiXHhwhiCsTsWusBYUnZNECEQAqG7iqJUgRIIFII11tKEllh8FOMjSMHe+7G4c/uuffcRzizu3JlzZs75znfOGJEqBochJAAyAASkqpr01VTl1NVMiZIlRNTQxutM8QWOT6jmDL9QmN1NipLD+m+97kqS/hJCBUnSHS2fo4XQ/0JwBFTyMmeo4QSTNHCEKgz/sp0bLGYbD9nMzzzCEcRGluIsIMt3/MSbFKhkkka20c5bdNDIbap5wBa+p58sQdEu9sAgajnNGo5Tyx0aGORr/mMMWEkFH9LKDZaSp4Nf2Uw+hjQz6/4MzaxhjEu8gWVdAqZh4F3gJI+4xHqayZHHMVME0XhIatUlaaOQkZGTlZGRlZOREdoo6XNllbCKJ8/qS9WqR2fVIps4sjiMkFWLzmq/Vmif6qN8ZLz7u3iPEaqY4mIZyghDyEXusoB2OrG8jyU0Mogl/I4okOclDFCG335vkKUswpJjCpPBErCOZzjELRb7u8qJMMBV/qaOd3iRH7FRbMv0sbp1X2uFXEn0yeGE1uq+vlKnlgiZIjXbNKSmuUQtGVaoSUNqi/8yWEK2sIrlTDP+xADi8MaZZiuv8gfHsJFTP0g6qAEtTE3g3GQu1IAOSjot5CJOj3u+PeeRLi/Gaw0DNyMqWwImgHaep+KpDqjgBeYDE4CNYGnWN2pSt3qeKoQe7VNOvWoWsslKOKUrvgrKmxuhIZ0qHmc9slXs5QDX6YvaTBn3hejjGgfoptpb+tyukDSt8+pXq1zZYnJqVb/OaVpSXWRpgRDHLbqYxyQXGGSDv89hMRgszvu0gUEucJt5dDGBI4w7UlR9A7SwgwY6uMfWlBD6yHKcUQ5zmddiq7ilWUJqWMYIhnP8xmqusJeQm0A9lo9YzzCr2URAI3kKWMJkSwuxFChgGaGOPloJuc55ZhAZXmE/WUZ4m1EaGfUXxuROwOSEdkuSJrVAO9WpQ/pWH2in5utPSdJnQi4JcVq2c+rVUaGMf1LuqVLosHqVK9UufRuLj0YNe1gJjPEp/5TsxuRIqV7rKZPcMhgMmo38iQckvYkkKK/yGMC9U3MN+SxQAAAAAElFTkSuQmCC";
 
 // Created in onInstalled rather than at top level: the service worker restarts
@@ -45,20 +54,60 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Runs in the page. Swaps the favicon for the extension's icon so the tab reads
-// as unloaded in the strip.
+// Runs in the page. Greys out the tab's own favicon so it still reads as the
+// site it belongs to, just muted. Falls back to FALLBACK_ICON when the favicon
+// cannot be read into a canvas. Returns "grayscale" or "fallback".
 //
 // This must happen BEFORE discarding. A discarded tab has no renderer, so there
 // is nothing left to inject into — but the tab strip keeps painting the last
 // favicon the renderer reported, and Chrome never re-fetches it while discarded.
 // So the marker survives. The real favicon comes back on its own when the tab
 // reloads on activation.
-function markUnloaded(iconUrl) {
+//
+// Must stay async and RETURN the promise: executeScript waits for a returned
+// promise to settle, and that is the only thing keeping discard() from firing
+// while the image is still decoding.
+// Every value it needs arrives as an argument: this body is serialised and run
+// in the page, where the service worker's constants do not exist.
+async function markUnloaded(fallbackIcon, tabFavicon, readTimeoutMs) {
   // Stop any in-flight load, so the page cannot overwrite the icon afterwards.
   window.stop();
 
-  // Matches rel="icon", "shortcut icon", "apple-touch-icon", any case.
-  for (const link of document.querySelectorAll('link[rel*="icon" i]')) {
+  // Read the source before removing anything. Matches rel="icon",
+  // "shortcut icon" and "apple-touch-icon", any case.
+  const links = [...document.querySelectorAll('link[rel*="icon" i]')];
+  const source =
+    tabFavicon || links.map((l) => l.href).find(Boolean) || "/favicon.ico";
+
+  const grey = await new Promise((resolve) => {
+    const img = new Image();
+    // Required, or a cross-origin favicon taints the canvas and toDataURL()
+    // throws. With it, such a favicon fails to load instead — either way it
+    // cannot be greyed, so both routes fall through to the fallback icon.
+    img.crossOrigin = "anonymous";
+    const done = (value) => {
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => done(null), readTimeoutMs);
+    img.onerror = () => done(null);
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext("2d");
+        ctx.filter = "grayscale(100%)";
+        ctx.drawImage(img, 0, 0, 32, 32);
+        done(canvas.toDataURL("image/png"));
+      } catch {
+        done(null); // tainted canvas
+      }
+    };
+    img.src = source;
+  });
+
+  for (const link of links) {
     link.remove();
   }
 
@@ -66,9 +115,11 @@ function markUnloaded(iconUrl) {
     Object.assign(document.createElement("link"), {
       rel: "icon",
       type: "image/png",
-      href: iconUrl,
+      href: grey || fallbackIcon,
     }),
   );
+
+  return grey ? "grayscale" : "fallback";
 }
 
 // Resolves once Chrome reports the new favicon, so we do not tear down the
@@ -95,7 +146,10 @@ async function unload(tab) {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: markUnloaded,
-      args: [ICON],
+      // tab.favIconUrl is the icon Chrome already resolved for this tab, which
+      // beats re-deriving one from the DOM. Needs host permissions, which the
+      // marker requires anyway.
+      args: [FALLBACK_ICON, tab.favIconUrl ?? null, FAVICON_READ_TIMEOUT_MS],
     });
     await marked;
 

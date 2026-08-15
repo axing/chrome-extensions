@@ -42,12 +42,16 @@ If an unloaded tab flickers back to its original favicon, raise `FAVICON_SETTLE_
 
 ## Seeing which tabs are unloaded
 
-An unloaded tab shows a **white dotted ring** in place of its own favicon — the same motif Chrome
-uses for inactive tabs. The real favicon returns by itself the moment you click the tab and it
-reloads.
+An unloaded tab shows its **own favicon, greyed out** — so it still reads as the site it belongs
+to, just muted. The real colour returns by itself the moment you click the tab and it reloads.
 
-The ring is white because it sits in the tab strip, which is dark here. It will not show up
-against a light tab theme; recolour it by editing the regeneration command in `background.js`.
+When the favicon cannot be greyed, the tab falls back to a **white dotted ring**. That happens
+when the icon is served cross-origin without CORS headers, which makes it unreadable by canvas:
+with `crossOrigin` set the image fails to load, and without it `toDataURL()` throws on a tainted
+canvas. There is no third option, so the fallback exists to keep *some* signal on the tab.
+
+The fallback ring is white because it sits in the tab strip, which is dark here. It will not show
+up against a light tab theme; recolour it by editing the regeneration command in `background.js`.
 
 The extension's own icon (`icons/*.png`, shown on `chrome://extensions` and in the toolbar) is the
 same ring on a dark tile. Those surfaces follow light/dark mode, so unlike the tab marker it
@@ -93,8 +97,18 @@ Things a reasonable agent (or a future you) will try to "fix". Do not.
   is a different thing entirely — raising it does nothing, because the notification arrives long
   before the ceiling is reached. If the marker reverts, raise the **floor**. Auto Tab Discard
   carries the same delay as its `favicon-delay` pref (100ms on Chrome).
-- **The marker icon must stay a `data:` URI.** Do not "tidy" `ICON` in `background.js` into a
-  `chrome.runtime.getURL("icons/32.png")` call — that was tried and it silently fails. Swapping
+- **`markUnloaded()` must stay `async` and keep returning its promise.** `executeScript` waits
+  for a returned promise to settle, and that wait is the only thing stopping `discard()` from
+  firing while the favicon image is still decoding. A fire-and-forget `img.onload` — the obvious
+  way to write this — resolves instantly and loses the marker every time.
+- **`markUnloaded()` may not reference any constant defined in this file.** Its body is
+  serialised and run in the page, where the service worker's scope does not exist. Everything it
+  needs is passed through `args`. A test enforces this.
+- **The greyscale fallback is not dead code.** A cross-origin favicon served without CORS headers
+  cannot be read into a canvas by any route, so roughly any site using a CDN-hosted icon lands on
+  the dotted ring instead. Verified against real pages, not assumed.
+- **The fallback icon must stay a `data:` URI.** Do not "tidy" `FALLBACK_ICON` in `background.js`
+  into a `chrome.runtime.getURL("icons/32.png")` call — that was tried and it silently fails. Swapping
   the `<link rel="icon">` makes Chrome **re-fetch** the favicon (verified: mutating the link
   fires a real network request), and when that fetch fails Chrome quietly keeps the *previous*
   icon rather than showing nothing. An extension URL does not survive that path. A `data:` URI
