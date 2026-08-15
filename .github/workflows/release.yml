@@ -1,0 +1,122 @@
+name: Release
+
+# Tag format: <extension-dir>-v<semver>   e.g.  tab-manager-v1.2.0
+on:
+  push:
+    tags:
+      - "*-v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # The tag is the single source of truth for the version. Source files
+      # carry a 0.0.0 placeholder that is never hand-edited.
+      - name: Parse tag
+        id: parse
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+
+          # Split on the LAST "-v" so extension names may themselves contain
+          # "-v" (e.g. vim-mode-v2.0.0 -> vim-mode / 2.0.0).
+          name="${tag%-v*}"
+          version="${tag##*-v}"
+
+          if [ -z "$name" ] || [ -z "$version" ] || [ "$name" = "$tag" ]; then
+            echo "::error::Cannot parse tag '$tag' — expected <extension-dir>-v<semver>"
+            exit 1
+          fi
+          if [ ! -d "extensions/$name" ]; then
+            echo "::error::Tag '$tag' points at extensions/$name, which does not exist"
+            exit 1
+          fi
+
+          echo "name=$name"               >> "$GITHUB_OUTPUT"
+          echo "version=$version"         >> "$GITHUB_OUTPUT"
+          echo "dir=extensions/$name"     >> "$GITHUB_OUTPUT"
+          echo "Releasing $name v$version"
+
+      - name: Build
+        env:
+          NAME: ${{ steps.parse.outputs.name }}
+          VERSION: ${{ steps.parse.outputs.version }}
+          DIR: ${{ steps.parse.outputs.dir }}
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          if [ -f "$DIR/wxt.config.ts" ]; then
+            echo "WXT build: $NAME"
+            corepack enable
+            # Install before touching the version so the lockfile check is clean.
+            pnpm install --frozen-lockfile
+            tmp=$(mktemp)
+            jq --arg v "$VERSION" '.version = $v' "$DIR/package.json" > "$tmp"
+            mv "$tmp" "$DIR/package.json"
+            # Filter by path, so the package name need not match the directory.
+            pnpm --filter "./$DIR" exec wxt zip
+            built=$(find "$DIR/.output" -maxdepth 1 -name '*-chrome.zip' | head -n1)
+            if [ -z "$built" ]; then
+              echo "::error::wxt zip produced no artifact in $DIR/.output"
+              exit 1
+            fi
+            cp "$built" "dist/$NAME.zip"
+
+          elif [ -f "$DIR/manifest.json" ]; then
+            echo "Raw build: $NAME"
+            stage="$RUNNER_TEMP/$NAME"
+            rm -rf "$stage"
+            mkdir -p "$stage"
+            cp -R "$DIR/." "$stage/"
+            rm -f "$stage/README.md"
+            tmp=$(mktemp)
+            jq --arg v "$VERSION" '.version = $v' "$stage/manifest.json" > "$tmp"
+            mv "$tmp" "$stage/manifest.json"
+            (cd "$stage" && zip -qr "$GITHUB_WORKSPACE/dist/$NAME.zip" .)
+
+          else
+            echo "::error::$DIR has neither wxt.config.ts nor manifest.json"
+            exit 1
+          fi
+
+          unzip -p "dist/$NAME.zip" manifest.json | jq -e --arg v "$VERSION" \
+            '.version == $v' > /dev/null \
+            || { echo "::error::Built manifest version does not match tag"; exit 1; }
+
+      # Two destinations: a pinnable versioned release, and a rolling mirror at
+      # the literal tag "latest" that gives every extension a permanent URL:
+      #   .../releases/download/latest/<name>.zip
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.parse.outputs.name }}
+          VERSION: ${{ steps.parse.outputs.version }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          gh release create "$TAG" "dist/$NAME.zip" \
+            --title "$NAME $VERSION" \
+            --notes "Download \`$NAME.zip\`, unzip it, then load the folder at \`chrome://extensions\` with Developer Mode enabled."
+
+          # --latest=false keeps this mirror from becoming GitHub's repo-wide
+          # "latest release" pointer.
+          if ! gh release view latest >/dev/null 2>&1; then
+            gh release create latest \
+              --title "Latest builds" \
+              --notes "Rolling mirror holding the newest zip of every extension. The download links here are permanent." \
+              --latest=false
+          fi
+
+          gh release upload latest "dist/$NAME.zip" --clobber
