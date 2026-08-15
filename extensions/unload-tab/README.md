@@ -42,8 +42,16 @@ If an unloaded tab flickers back to its original favicon, raise `FAVICON_SETTLE_
 
 ## Seeing which tabs are unloaded
 
-An unloaded tab shows **this extension's icon** in place of its own favicon. The real favicon
-returns by itself the moment you click the tab and it reloads.
+An unloaded tab shows a **white dotted ring** in place of its own favicon — the same motif Chrome
+uses for inactive tabs. The real favicon returns by itself the moment you click the tab and it
+reloads.
+
+The ring is white because it sits in the tab strip, which is dark here. It will not show up
+against a light tab theme; recolour it by editing the regeneration command in `background.js`.
+
+The extension's own icon (`icons/*.png`, shown on `chrome://extensions` and in the toolbar) is the
+same ring on a dark tile. Those surfaces follow light/dark mode, so unlike the tab marker it
+carries its own background rather than depending on one.
 
 Chrome's own indicator — the dotted ring at `chrome://settings/performance` → **Inactive tabs
 appearance** — does *not* apply here. Chromium tags every discard with a reason, and that ring is

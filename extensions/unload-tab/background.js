@@ -14,12 +14,26 @@ const FAVICON_SETTLE_MS = 300;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// icons/32.png, inlined. This MUST be a data: URI, not chrome.runtime.getURL().
-// Chrome re-fetches the favicon when the <link> is swapped, and if that fetch
-// fails it silently keeps the old icon — which is what an extension URL does
-// here. A data: URI cannot fail and needs no web_accessible_resources entry.
+// icons/inactive.png, recoloured white and inlined at 32px. Regenerate with:
+//
+//   magick icons/inactive.png -alpha extract \
+//     -morphology Dilate Disk:2.5 -resize 32x32 mask.png
+//   magick -size 32x32 xc:white mask.png -alpha off \
+//     -compose CopyOpacity -composite -strip marker.png
+//   base64 -i marker.png | tr -d '\n'
+//
+// The source is pure black with the shape held entirely in its alpha channel,
+// so "invert" is just "paint it white" — building the mask and stamping it onto
+// a white canvas keeps RGB white by construction, where -negate plus -resize
+// bleeds black into the semi-transparent edges. The dilate is what keeps the
+// thin dotted ring legible once it is scaled down to favicon size.
+//
+// This MUST be a data: URI, not chrome.runtime.getURL(). Chrome re-fetches the
+// favicon when the <link> is swapped, and if that fetch fails it silently keeps
+// the old icon — which is what an extension URL does here. A data: URI cannot
+// fail and needs no web_accessible_resources entry.
 const ICON =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA5ElEQVR42mNgQAKqya/5gbgeiM8D8X8q4/NQs/kZsAGgRDwQv6eBxegYZEc8Nsv/0xnHIwf7+wFwwHtwdEDj5f8A4XoGchLciRu//qMDkBg5CZOBHJdT0QH/Rx0w6oBRBwxuBxjlvPl/7eHv/+QCkF6QGRSFALmOIMZykqJg7ZHvRFsOUkuTNECMI0ixnKxEiM8RpFpOdi4om/sJw3KQGN2yIbojyLWcIgfAHEGJ5RQ7gBp4cDvAt+EduIilBIPMINsB0V0f/lMKQGYQcsD5AXTA+UHRLB/YjsmAd80GRed0ILvnAKEHcgfGQpR6AAAAAElFTkSuQmCC";
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAQAAADZc7J/AAADUUlEQVRIx42VT2xVRRTGfzPzWv60rxChgYRapeU1UjAQUqpSjSQmrsCmgRBN2BqtiXHhwhiCsTsWusBYUnZNECEQAqG7iqJUgRIIFII11tKEllh8FOMjSMHe+7G4c/uuffcRzizu3JlzZs75znfOGJEqBochJAAyAASkqpr01VTl1NVMiZIlRNTQxutM8QWOT6jmDL9QmN1NipLD+m+97kqS/hJCBUnSHS2fo4XQ/0JwBFTyMmeo4QSTNHCEKgz/sp0bLGYbD9nMzzzCEcRGluIsIMt3/MSbFKhkkka20c5bdNDIbap5wBa+p58sQdEu9sAgajnNGo5Tyx0aGORr/mMMWEkFH9LKDZaSp4Nf2Uw+hjQz6/4MzaxhjEu8gWVdAqZh4F3gJI+4xHqayZHHMVME0XhIatUlaaOQkZGTlZGRlZOREdoo6XNllbCKJ8/qS9WqR2fVIps4sjiMkFWLzmq/Vmif6qN8ZLz7u3iPEaqY4mIZyghDyEXusoB2OrG8jyU0Mogl/I4okOclDFCG335vkKUswpJjCpPBErCOZzjELRb7u8qJMMBV/qaOd3iRH7FRbMv0sbp1X2uFXEn0yeGE1uq+vlKnlgiZIjXbNKSmuUQtGVaoSUNqi/8yWEK2sIrlTDP+xADi8MaZZiuv8gfHsJFTP0g6qAEtTE3g3GQu1IAOSjot5CJOj3u+PeeRLi/Gaw0DNyMqWwImgHaep+KpDqjgBeYDE4CNYGnWN2pSt3qeKoQe7VNOvWoWsslKOKUrvgrKmxuhIZ0qHmc9slXs5QDX6YvaTBn3hejjGgfoptpb+tyukDSt8+pXq1zZYnJqVb/OaVpSXWRpgRDHLbqYxyQXGGSDv89hMRgszvu0gUEucJt5dDGBI4w7UlR9A7SwgwY6uMfWlBD6yHKcUQ5zmddiq7ilWUJqWMYIhnP8xmqusJeQm0A9lo9YzzCr2URAI3kKWMJkSwuxFChgGaGOPloJuc55ZhAZXmE/WUZ4m1EaGfUXxuROwOSEdkuSJrVAO9WpQ/pWH2in5utPSdJnQi4JcVq2c+rVUaGMf1LuqVLosHqVK9UufRuLj0YNe1gJjPEp/5TsxuRIqV7rKZPcMhgMmo38iQckvYkkKK/yGMC9U3MN+SxQAAAAAElFTkSuQmCC";
 
 // Created in onInstalled rather than at top level: the service worker restarts
 // constantly, and contextMenus.create() throws on a duplicate id.
