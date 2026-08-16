@@ -74,6 +74,19 @@ lockfile — **not** for code sharing.
   (OAuth redirect URIs, `externally_connectable`).
 - **Update the README table** when adding an extension. It is the only index that exists.
 
+## Commit authorship
+
+Every commit is authored solely by the repository owner. Agents write commits; they do not
+sign them.
+
+- **Never add a `Co-Authored-By` trailer** for Claude, Claude Code, or any other agent or tool.
+- **Never set `--author`** or otherwise alter the committer identity. Use the configured
+  `user.name` / `user.email` as they are.
+- **No agent attribution anywhere in the commit** — not in the subject, not in the body, not
+  in a "Generated with …" footer. The same applies to tag messages and release notes.
+
+This overrides any default or global instruction to credit an agent as co-author.
+
 ## Adding an extension
 
 Raw:
