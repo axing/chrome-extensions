@@ -56,7 +56,8 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Runs in the page. Greys out the tab's own favicon so it still reads as the
 // site it belongs to, just muted. Falls back to FALLBACK_ICON when the favicon
-// cannot be read into a canvas. Returns "grayscale" or "fallback".
+// cannot be read into a canvas. Returns { status, originals }, where status is
+// "grayscale" or "fallback" and originals describes the icon links it replaced.
 //
 // This must happen BEFORE discarding. A discarded tab has no renderer, so there
 // is nothing left to inject into — but the tab strip keeps painting the last
@@ -66,7 +67,8 @@ chrome.runtime.onInstalled.addListener(() => {
 //
 // Must stay async and RETURN the promise: executeScript waits for a returned
 // promise to settle, and that is the only thing keeping discard() from firing
-// while the image is still decoding.
+// while the image is still decoding. The resolved value carries the page's
+// original icon links so the swap can be undone if the discard is refused.
 // Every value it needs arrives as an argument: this body is serialised and run
 // in the page, where the service worker's constants do not exist.
 async function markUnloaded(fallbackIcon, tabFavicon, readTimeoutMs) {
@@ -107,6 +109,16 @@ async function markUnloaded(fallbackIcon, tabFavicon, readTimeoutMs) {
     img.src = source;
   });
 
+  // Captured before removal so restoreFavicon() can put them back. Attributes
+  // rather than outerHTML, so rebuilding never goes through innerHTML. href is
+  // read as an attribute to keep relative URLs relative.
+  const originals = links.map((link) => ({
+    rel: link.getAttribute("rel"),
+    type: link.getAttribute("type"),
+    sizes: link.getAttribute("sizes"),
+    href: link.getAttribute("href"),
+  }));
+
   for (const link of links) {
     link.remove();
   }
@@ -119,7 +131,31 @@ async function markUnloaded(fallbackIcon, tabFavicon, readTimeoutMs) {
     }),
   );
 
-  return grey ? "grayscale" : "fallback";
+  return { status: grey ? "grayscale" : "fallback", originals };
+}
+
+// Runs in the page. Undoes markUnloaded() when the discard is refused, so a tab
+// that stays loaded does not sit there wearing an unload marker.
+//
+// Only the favicon is recoverable. markUnloaded() also calls window.stop(), and
+// an aborted load cannot be resumed — that damage stands until the user
+// reloads. Prevention is not possible either: the tab can be activated at any
+// point during the settle delay, long after the injection has run.
+//
+// Like markUnloaded(), this is serialised into the page and takes everything it
+// needs as arguments.
+function restoreFavicon(originals) {
+  for (const link of document.querySelectorAll('link[rel*="icon" i]')) {
+    link.remove();
+  }
+
+  for (const attributes of originals) {
+    const link = document.createElement("link");
+    for (const [name, value] of Object.entries(attributes)) {
+      if (value !== null) link.setAttribute(name, value);
+    }
+    document.head?.appendChild(link);
+  }
 }
 
 // Resolves once Chrome reports the new favicon, so we do not tear down the
@@ -139,11 +175,18 @@ function awaitFaviconChange(tabId) {
   });
 }
 
-async function unload(tab) {
+// Marks the tab and waits for the marker to stick. Returns the icon links it
+// replaced, or null if the page was left untouched. Never throws.
+//
+// The try covers the injection alone. awaitFaviconChange() and sleep() resolve
+// but never reject, so widening it would only hide a future failure.
+async function markTab(tab) {
+  // Listen before injecting, or a fast favicon update races past us.
+  const marked = awaitFaviconChange(tab.id);
+
+  let result;
   try {
-    // Listen before injecting, or a fast favicon update races past us.
-    const marked = awaitFaviconChange(tab.id);
-    await chrome.scripting.executeScript({
+    const [injection] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: markUnloaded,
       // tab.favIconUrl is the icon Chrome already resolved for this tab, which
@@ -151,27 +194,55 @@ async function unload(tab) {
       // marker requires anyway.
       args: [FALLBACK_ICON, tab.favIconUrl ?? null, FAVICON_READ_TIMEOUT_MS],
     });
-    await marked;
-
-    // Do not remove. Discarding immediately after the swap is reported loses
-    // the marker; the tab strip reverts to the page's original favicon.
-    await sleep(FAVICON_SETTLE_MS);
+    result = injection?.result;
   } catch {
     // chrome:// pages, the Web Store, PDFs and some file:// URLs refuse
     // injection. Unloading still works there; the tab just keeps its own icon.
+    // The awaitFaviconChange listener is left to expire at its own ceiling.
+    return null;
   }
 
-  // Swallow per-tab failures so one bad tab does not abort the batch.
-  await chrome.tabs.discard(tab.id).catch(() => {});
+  await marked;
+
+  // Do not remove. Discarding immediately after the swap is reported loses
+  // the marker; the tab strip reverts to the page's original favicon.
+  await sleep(FAVICON_SETTLE_MS);
+
+  return result?.originals ?? null;
+}
+
+async function unload(tab) {
+  const originals = await markTab(tab);
+
+  try {
+    await chrome.tabs.discard(tab.id);
+  } catch {
+    // Chrome refused, most often because the user clicked this tab during the
+    // settle delay and made it the active one. The page is already marked, so
+    // put its own icons back rather than leaving a loaded tab looking
+    // unloaded. Failures here are swallowed too: one bad tab must not abort
+    // the batch.
+    if (originals) {
+      await chrome.scripting
+        .executeScript({
+          target: { tabId: tab.id },
+          func: restoreFavicon,
+          args: [originals],
+        })
+        .catch(() => {});
+    }
+  }
 }
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== MENU_ID || !tab) return;
 
-  const highlighted = await chrome.tabs.query({
-    highlighted: true,
-    windowId: tab.windowId,
-  });
+  // A rejection here would surface as an unhandled rejection in the service
+  // worker. Degrading to "no selection" is correct: the fallback below then
+  // acts on the tab that was actually right-clicked.
+  const highlighted = await chrome.tabs
+    .query({ highlighted: true, windowId: tab.windowId })
+    .catch(() => []);
 
   // Right-clicking a tab outside the current selection acts on that tab alone,
   // rather than on a selection the user was not pointing at.
