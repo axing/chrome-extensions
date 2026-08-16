@@ -11,7 +11,7 @@ Each extension is independent. Nothing here is a library.
 
 | Extension | What it does | Download | Source |
 | --- | --- | --- | --- |
-| _none yet_ | | | |
+| Unload Tab | Unload tabs from the tab-strip right-click menu to free their memory | [Download](https://github.com/axing/chrome-extensions/releases/download/latest/unload-tab.zip) | [Source](./extensions/unload-tab) |
 
 ## Installing
 

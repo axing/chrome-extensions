@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Unload Tab",
+  "description": "Unload tabs from the tab-strip right-click menu to release their memory.",
+  "version": "0.0.0",
+  "minimum_chrome_version": "150",
+  "permissions": ["contextMenus", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
+}
