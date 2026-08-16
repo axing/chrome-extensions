@@ -132,11 +132,14 @@ Things a reasonable agent will try to "fix". Do not.
 
 ## Unverified
 
-The release workflow has never executed — nothing has been released yet. If the first tag
-fails, these two lines are written from convention rather than observation and are the likely
-culprits:
+The **raw** release path is proven: `unload-tab-v1.0.0` published cleanly on the workflow's first
+ever run — tag parsed, version injected, both the versioned release and the `latest` mirror
+created, and the permanent URL serves a zip whose manifest reads `1.0.0`.
+
+The **WXT** path has still never executed. These two lines remain written from convention rather
+than observation, and are the likely culprits if the first WXT tag fails:
 
 - `pnpm --filter ./extensions/<name>` — the path-filter syntax
 - WXT's zip output filename pattern, matched as `*-chrome.zip` in `.output/`
 
-**Delete this section once a tag has published successfully.**
+**Delete this section once a WXT extension has published successfully.**
