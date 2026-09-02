@@ -12,6 +12,7 @@ Each extension is independent. Nothing here is a library.
 | Extension | What it does | Download | Source |
 | --- | --- | --- | --- |
 | Unload Tab | Unload tabs from the tab-strip right-click menu to free their memory | [Download](https://github.com/axing/chrome-extensions/releases/download/latest/unload-tab.zip) | [Source](./extensions/unload-tab) |
+| Google Meet Auto Join | Click Join on a Meet pre-call screen at a time you set | [Download](https://github.com/axing/chrome-extensions/releases/download/latest/meet-auto-join.zip) | [Source](./extensions/meet-auto-join) |
 
 ## Installing
 
