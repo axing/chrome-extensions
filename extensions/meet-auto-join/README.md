@@ -38,6 +38,16 @@ data for Meet forgets the setting; re-ticking the box is the whole recovery.
 3. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and select
    the unzipped folder.
 
+## Verified against real Meet
+
+The DOM selectors here were confirmed working in Chrome against a live Meet pre-call screen on
+**2026-09-02**, at `v1.0.0`: the panel appeared, the countdown armed, and **Turn mic and camera
+off** switched both devices off.
+
+That date matters. Meet's markup is not a public API, so if this ever stops working the cause is
+Google changing the page, not a selector that was always wrong. Start by re-reading
+`data-is-muted` and the `aria-label` text on the real buttons before rewriting anything.
+
 ## Traps
 
 Things a reasonable agent (or a future you) will try to "fix". Do not.
