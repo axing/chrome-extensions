@@ -87,6 +87,24 @@ sign them.
 
 This overrides any default or global instruction to credit an agent as co-author.
 
+## Git workflow
+
+- Work on a branch for every task that changes tracked files, including small documentation
+  changes. Create one branch per task when starting from `main` or when no branch was designated.
+  If the owner designates an existing branch, use it.
+- Commit only changes belonging to the task. Leave unrelated working-tree changes alone. Split
+  separable work by category into distinct commits when practical.
+- Use [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) for every
+  commit: `<type>[optional scope]: <description>`. Choose the type by the work done, such as
+  `feat`, `fix`, `docs`, or `chore`.
+- Create no pull requests for branches created by the owner or an agent.
+- After completing and verifying the task, commit its remaining changes and push the task branch
+  to `origin` as a backup. Keep the remote branch for periodic review and cleanup.
+- Then merge the task branch into local `main`, using a fast-forward merge when possible, and push
+  `main` to `origin`. If remote `main` has advanced, fetch and reconcile the histories cleanly
+  before pushing. Stop and report conflicts or uncertainty about someone else's work. Never
+  force-push.
+
 ## Adding an extension
 
 Raw:
