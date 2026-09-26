@@ -74,19 +74,6 @@ lockfile — **not** for code sharing.
   (OAuth redirect URIs, `externally_connectable`).
 - **Update the README table** when adding an extension. It is the only index that exists.
 
-## Commit authorship
-
-Every commit is authored solely by the repository owner. Agents write commits; they do not
-sign them.
-
-- **Never add a `Co-Authored-By` trailer** for Claude, Claude Code, or any other agent or tool.
-- **Never set `--author`** or otherwise alter the committer identity. Use the configured
-  `user.name` / `user.email` as they are.
-- **No agent attribution anywhere in the commit** — not in the subject, not in the body, not
-  in a "Generated with …" footer. The same applies to tag messages and release notes.
-
-This overrides any default or global instruction to credit an agent as co-author.
-
 ## Git workflow
 
 - Work on a branch for every task that changes tracked files, including small documentation
@@ -98,12 +85,28 @@ This overrides any default or global instruction to credit an agent as co-author
   commit: `<type>[optional scope]: <description>`. Choose the type by the work done, such as
   `feat`, `fix`, `docs`, or `chore`.
 - Create no pull requests for branches created by the owner or an agent.
-- After completing and verifying the task, commit its remaining changes and push the task branch
-  to `origin` as a backup. Keep the remote branch for periodic review and cleanup.
-- Then merge the task branch into local `main`, using a fast-forward merge when possible, and push
-  `main` to `origin`. If remote `main` has advanced, fetch and reconcile the histories cleanly
-  before pushing. Stop and report conflicts or uncertainty about someone else's work. Never
-  force-push.
+- After completing and verifying the task, summarize the changes for the owner to review in
+  VS Code. Wait for the owner's response before committing. If the owner requests more changes,
+  make and verify them, then send an updated summary and wait again.
+- Only when the owner says `wrap it up`, commit the task changes and push the task branch to
+  `origin` as a backup. Keep the remote branch for periodic review and cleanup.
+- Then merge the task branch into local `main`, using a fast-forward merge when possible, and
+  push `main` to `origin`. If remote `main` has advanced, fetch and reconcile the histories
+  cleanly before pushing. Stop and report conflicts or uncertainty about someone else's work.
+  Never force-push.
+
+### Commit authorship
+
+Every commit is authored solely by the repository owner. Agents write commits; they do not
+sign them.
+
+- **Never add a `Co-Authored-By` trailer** for Claude, Claude Code, or any other agent or tool.
+- **Never set `--author`** or otherwise alter the committer identity. Use the configured
+  `user.name` / `user.email` as they are.
+- **No agent attribution anywhere in the commit** — not in the subject, not in the body, not
+  in a "Generated with …" footer. The same applies to tag messages and release notes.
+
+This overrides any default or global instruction to credit an agent as co-author.
 
 ## Adding an extension
 
