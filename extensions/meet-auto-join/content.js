@@ -7,6 +7,9 @@
 
   const PANEL_ID = 'meet-auto-join-panel';
   const AV_OFF_KEY = 'meet-auto-join:av-off';
+  const MIC_OFF_KEY = 'meet-auto-join:mic-off';
+  const CAMERA_OFF_KEY = 'meet-auto-join:camera-off';
+  const BOTTOM_PADDING_XPATH = '/html/body/div[1]/c-wiz/div/div/div[22]/div[3]/div/div[3]/div[4]/div/div/div[2]';
 
   // Fire the join this far before the target. Chrome wakes a long-hidden page
   // once a minute, aligned to the whole minute, and targets are always whole
@@ -97,17 +100,19 @@
   // localStorage belongs to meet.google.com, which this script shares. Nothing
   // secret goes in it, so the page owning it does not matter, and it keeps the
   // manifest free of a storage permission.
-  function readAvOff() {
+  function readDeviceOff(key) {
     try {
-      return localStorage.getItem(AV_OFF_KEY) === '1';
+      const saved = localStorage.getItem(key);
+      return (saved === null ? localStorage.getItem(AV_OFF_KEY) : saved) === '1';
     } catch (e) {
       return false;
     }
   }
 
-  function writeAvOff(value) {
+  function writeDevicePrefs() {
     try {
-      localStorage.setItem(AV_OFF_KEY, value ? '1' : '0');
+      localStorage.setItem(MIC_OFF_KEY, micCheckbox.checked ? '1' : '0');
+      localStorage.setItem(CAMERA_OFF_KEY, cameraCheckbox.checked ? '1' : '0');
     } catch (e) {
       /* Private mode or blocked site storage prevents saving the preference. */
     }
@@ -178,19 +183,14 @@
 
   // Read the real state and click only what is actually on. Another extension
   // may already have muted these; a blind click would switch them back on.
-  function silenceAv(attemptsLeft) {
-    if (!panelEl) return; // the panel was closed while a retry was pending
-    let missing = false;
-    ['microphone', 'camera'].forEach(function (kind) {
-      const button = findAvButton(kind);
-      if (!button) {
-        missing = true;
-        return;
-      }
+  function silenceDevice(kind, attemptsLeft) {
+    const checkbox = kind === 'microphone' ? micCheckbox : cameraCheckbox;
+    if (!panelEl || !checkbox.checked) return;
+    const button = findAvButton(kind);
+    if (button) {
       if (isAvOn(button)) button.click();
-    });
-    if (missing && attemptsLeft > 0) {
-      window.setTimeout(function () { silenceAv(attemptsLeft - 1); }, 1000);
+    } else if (attemptsLeft > 0) {
+      window.setTimeout(function () { silenceDevice(kind, attemptsLeft - 1); }, 1000);
     }
   }
 
@@ -266,7 +266,7 @@
   function applyState() {
     if (!enableCheckbox.checked) {
       disarm();
-      setStatus('Idle. Set a time, then tick Enable auto join.', 'muted');
+      setStatus('Idle. Set a time, then enable auto join.', 'muted');
       return;
     }
 
@@ -292,8 +292,57 @@
   let panelEl = null;
   let timeInput = null;
   let enableCheckbox = null;
-  let avCheckbox = null;
+  let micCheckbox = null;
+  let cameraCheckbox = null;
   let statusEl = null;
+  let footerResizeObserver = null;
+  let footerArrivalObserver = null;
+  let paddingObserver = null;
+  let paddedElement = null;
+  let originalPaddingBottom = '';
+
+  function updateBottomPadding() {
+    const element = document.evaluate(
+      BOTTOM_PADDING_XPATH,
+      document,
+      null,
+      window.XPathResult.FIRST_ORDERED_NODE_TYPE,
+      null
+    ).singleNodeValue;
+    if (element === paddedElement) return;
+    if (paddedElement) paddedElement.style.paddingBottom = originalPaddingBottom;
+    paddedElement = element;
+    if (element) {
+      originalPaddingBottom = element.style.paddingBottom;
+      element.style.paddingBottom = '80px';
+    }
+    positionPanel();
+  }
+
+  function positionPanel() {
+    if (!panelEl) return;
+    const footer = document.querySelector('footer');
+    const footerOffset = footer ? window.innerHeight - footer.getBoundingClientRect().top : 0;
+    panelEl.style.bottom = Math.max(16, footerOffset + 12) + 'px';
+  }
+
+  function observeFooter() {
+    const footer = document.querySelector('footer');
+    if (footer) {
+      footerResizeObserver = new window.ResizeObserver(positionPanel);
+      footerResizeObserver.observe(footer);
+      positionPanel();
+      return;
+    }
+    footerArrivalObserver = new window.MutationObserver(function () {
+      if (!document.querySelector('footer')) return;
+      footerArrivalObserver.disconnect();
+      footerArrivalObserver = null;
+      observeFooter();
+    });
+    footerArrivalObserver.observe(document.body, { childList: true, subtree: true });
+    positionPanel();
+  }
 
   function setStatus(message, kind) {
     if (!statusEl) return;
@@ -307,12 +356,13 @@
     Object.assign(wrap.style, {
       display: 'flex',
       alignItems: 'center',
-      gap: '8px',
-      marginBottom: '8px',
+      gap: '6px',
       cursor: 'pointer',
+      whiteSpace: 'nowrap',
     });
     const box = document.createElement('input');
     box.type = 'checkbox';
+    box.style.margin = '0';
     const text = document.createElement('span');
     text.textContent = labelText;
     wrap.appendChild(box);
@@ -326,117 +376,122 @@
     panel.id = PANEL_ID;
     Object.assign(panel.style, {
       position: 'fixed',
-      bottom: '16px',
-      right: '16px',
+      left: '50%',
+      transform: 'translateX(-50%)',
       zIndex: '2147483647',
-      background: '#ffffff',
-      border: '1px solid #dadce0',
+      background: 'rgb(231 238 247 / 70%)',
       borderRadius: '12px',
-      boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
-      padding: '14px 16px',
-      width: '360px',
-      font: '16px/1.4 "Google Sans", Roboto, Arial, sans-serif',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+      padding: '10px 16px',
+      width: 'min(420px, calc(100vw - 16px))',
+      boxSizing: 'border-box',
+      font: '13px/1.4 "Google Sans", Roboto, Arial, sans-serif',
       color: '#202124',
       cursor: 'default',
     });
 
-    const header = document.createElement('div');
-    Object.assign(header.style, {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      fontWeight: '600',
-      marginBottom: '10px',
-      userSelect: 'none',
-    });
-
-    const headerTitle = document.createElement('span');
-    headerTitle.textContent = 'Meet Auto Join';
-
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.textContent = '×';
-    closeBtn.setAttribute('aria-label', 'Close');
-    closeBtn.title = 'Close';
-    Object.assign(closeBtn.style, {
-      border: 'none',
-      background: 'transparent',
-      color: '#5f6368',
-      cursor: 'pointer',
-      fontSize: '20px',
-      lineHeight: '1',
-      padding: '0 4px',
-      borderRadius: '6px',
-    });
-    closeBtn.addEventListener('mouseenter', function () {
-      closeBtn.style.background = '#f1f3f4';
-      closeBtn.style.color = '#202124';
-    });
-    closeBtn.addEventListener('mouseleave', function () {
-      closeBtn.style.background = 'transparent';
-      closeBtn.style.color = '#5f6368';
-    });
-    closeBtn.addEventListener('click', teardown);
-
-    header.appendChild(headerTitle);
-    header.appendChild(closeBtn);
-
-    const timeLabel = document.createElement('label');
-    timeLabel.textContent = 'Join at';
-    Object.assign(timeLabel.style, { display: 'block', marginBottom: '4px' });
-
     timeInput = document.createElement('input');
     timeInput.type = 'time';
+    timeInput.setAttribute('aria-label', 'Auto join time');
     timeInput.value = defaultTimeValue();
     Object.assign(timeInput.style, {
-      width: '100%',
+      width: '80px',
       boxSizing: 'border-box',
-      padding: '6px 8px',
+      padding: '2px 4px',
       border: '1px solid #dadce0',
-      borderRadius: '8px',
-      marginBottom: '10px',
+      borderRadius: '6px',
       font: 'inherit',
     });
 
-    const enable = makeCheckbox('Enable auto join');
+    const enable = makeCheckbox('Auto join at');
     enableCheckbox = enable.box;
 
-    const av = makeCheckbox('Turn mic and camera off');
-    avCheckbox = av.box;
-    avCheckbox.checked = readAvOff();
+    const mic = makeCheckbox('Turn mic off');
+    micCheckbox = mic.box;
+    micCheckbox.checked = readDeviceOff(MIC_OFF_KEY);
+
+    const camera = makeCheckbox('Turn camera off');
+    cameraCheckbox = camera.box;
+    cameraCheckbox.checked = readDeviceOff(CAMERA_OFF_KEY);
 
     statusEl = document.createElement('div');
     Object.assign(statusEl.style, {
-      fontSize: '14px',
+      fontSize: '12px',
       color: '#5f6368',
-      minHeight: '16px',
+      flex: '1 1 180px',
+      minWidth: '0',
     });
 
-    panel.appendChild(header);
-    panel.appendChild(timeLabel);
-    panel.appendChild(timeInput);
-    panel.appendChild(enable.wrap);
-    panel.appendChild(av.wrap);
-    panel.appendChild(statusEl);
-    document.body.appendChild(panel);
+    const autoJoinRow = document.createElement('div');
+    Object.assign(autoJoinRow.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      flexWrap: 'wrap',
+    });
+    autoJoinRow.appendChild(enable.wrap);
+    autoJoinRow.appendChild(timeInput);
+    autoJoinRow.appendChild(statusEl);
 
-    timeInput.addEventListener('input', applyState);
-    timeInput.addEventListener('change', applyState);
-    // Enter in the time field means "that's my answer", so it arms as well.
-    timeInput.addEventListener('keydown', function (event) {
-      if (event.key !== 'Enter') return;
-      event.preventDefault();
-      enableCheckbox.checked = true;
+    const devicesRow = document.createElement('div');
+    Object.assign(devicesRow.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '18px',
+      marginTop: '6px',
+      flexWrap: 'wrap',
+    });
+    devicesRow.appendChild(mic.wrap);
+    devicesRow.appendChild(camera.wrap);
+
+    panel.appendChild(autoJoinRow);
+    panel.appendChild(devicesRow);
+    document.body.appendChild(panel);
+    window.addEventListener('resize', positionPanel);
+    observeFooter();
+    updateBottomPadding();
+    paddingObserver = new window.MutationObserver(updateBottomPadding);
+    paddingObserver.observe(document.body, { childList: true, subtree: true });
+
+    let arrowStep = null;
+    timeInput.addEventListener('input', function () {
+      if (arrowStep) {
+        const before = arrowStep.value.split(':').map(Number);
+        const after = timeInput.value.split(':').map(Number);
+        const wrapsUp = arrowStep.key === 'ArrowUp' && before[1] === 59 && after[1] === 0;
+        const wrapsDown = arrowStep.key === 'ArrowDown' && before[1] === 0 && after[1] === 59;
+        if (before[0] === after[0] && (wrapsUp || wrapsDown)) {
+          const hour = (after[0] + (wrapsUp ? 1 : 23)) % 24;
+          timeInput.value = pad2(hour) + ':' + pad2(after[1]);
+        }
+        arrowStep = null;
+      }
       applyState();
     });
+    timeInput.addEventListener('change', applyState);
+    timeInput.addEventListener('keydown', function (event) {
+      arrowStep = event.key === 'ArrowUp' || event.key === 'ArrowDown'
+        ? { key: event.key, value: timeInput.value }
+        : null;
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        enableCheckbox.checked = !enableCheckbox.checked;
+        applyState();
+      }
+    });
     enableCheckbox.addEventListener('change', applyState);
-    avCheckbox.addEventListener('change', function () {
-      writeAvOff(avCheckbox.checked);
-      if (avCheckbox.checked) silenceAv(AV_RETRIES);
+    micCheckbox.addEventListener('change', function () {
+      writeDevicePrefs();
+      if (micCheckbox.checked) silenceDevice('microphone', AV_RETRIES);
+    });
+    cameraCheckbox.addEventListener('change', function () {
+      writeDevicePrefs();
+      if (cameraCheckbox.checked) silenceDevice('camera', AV_RETRIES);
     });
 
     watchManualJoin();
-    if (avCheckbox.checked) silenceAv(AV_RETRIES);
+    if (micCheckbox.checked) silenceDevice('microphone', AV_RETRIES);
+    if (cameraCheckbox.checked) silenceDevice('camera', AV_RETRIES);
     applyState();
   }
 
@@ -459,6 +514,23 @@
   function teardown() {
     disarm();
     stopRetries();
+    window.removeEventListener('resize', positionPanel);
+    if (footerResizeObserver) {
+      footerResizeObserver.disconnect();
+      footerResizeObserver = null;
+    }
+    if (footerArrivalObserver) {
+      footerArrivalObserver.disconnect();
+      footerArrivalObserver = null;
+    }
+    if (paddingObserver) {
+      paddingObserver.disconnect();
+      paddingObserver = null;
+    }
+    if (paddedElement) {
+      paddedElement.style.paddingBottom = originalPaddingBottom;
+      paddedElement = null;
+    }
     if (manualJoinHandler) {
       document.removeEventListener('click', manualJoinHandler, true);
       manualJoinHandler = null;
@@ -467,7 +539,8 @@
     panelEl = null;
     timeInput = null;
     enableCheckbox = null;
-    avCheckbox = null;
+    micCheckbox = null;
+    cameraCheckbox = null;
     statusEl = null;
   }
 

@@ -7,14 +7,17 @@ It began as a Tampermonkey userscript and requests only the access this task nee
 
 ## What it does
 
-- Appears on the Meet "green room" screen, bottom right, once per tab load.
-- The time field starts at one minute from now. You can change it.
-- Tick **Enable auto join** to show the countdown in the status line. Pressing Enter in the time
-  field also enables auto join.
-- Tick **Turn mic and camera off** and it switches off whichever of the two is currently on.
-  That choice is remembered for next time.
+- Appears centered just above the Meet "green room" footer, once per tab load.
+- The first row holds **Auto join at**, the time field, and the status. The second row holds the
+  mic and camera options.
+- The time field starts at one minute from now. You can change it. When the minute arrow step
+  wraps from `59` to `00` or back, the hour changes too.
+- Tick **Auto join at** to show the countdown in the status line. Press Enter in the time
+  field to toggle auto join.
+- Tick **Turn mic off** or **Turn camera off** to switch off either device if it is on. Each
+  choice is remembered separately for next time.
 - At the target time it clicks the join control, then removes itself.
-- It also removes itself if you join by hand, or press the **×**.
+- It also removes itself if you join by hand.
 
 The extension finds the join control by its visible label. It recognizes **Join now**, **Ask to
 join**, and **Join anyway**.
@@ -25,9 +28,10 @@ The manifest declares no permissions. Chrome asks about the content script's sit
 `https://meet.google.com/*`, which it presents as **"Read and change your data on
 meet.google.com"**.
 
-The extension saves the checkbox in `localStorage` on `meet.google.com`, which the content script
-shares with the page. It therefore needs no `storage` permission. Clearing Meet's site data
-removes the setting; tick the box again to restore it.
+The extension saves the mic and camera choices in `localStorage` on `meet.google.com`, which the
+content script shares with the page. It therefore needs no `storage` permission. Existing users'
+combined choice carries over to both options. Clearing Meet's site data removes the choices;
+tick the boxes again to restore them.
 
 ## Install
 
@@ -74,8 +78,11 @@ These choices are deliberate. Keep their reasons in mind when changing the exten
   back to whether the label starts with "Turn off". A blind click would switch **on** a device
   that some other extension had already switched off. If you use one of those, this one stays out
   of its way.
-- **Mic and camera are switched off once, when the panel appears.** If you deliberately turn your
-  camera back on after that, auto join leaves it on.
+- **The selected devices are switched off when the panel appears or when their boxes are ticked.**
+  If you deliberately turn your camera back on after that, auto join leaves it on.
+- **The requested Meet element uses a specific XPath.** The extension adds 80px of bottom
+  padding to that element while the panel is present and restores its previous inline padding
+  when the panel goes away. Meet can change this path when it changes its markup.
 - **The panel does not return for a second meeting in the same tab.** Meet is a single-page app.
   Leaving a call and opening another meeting does not reload the document, and
   `window.__meetAutoJoinLoaded` blocks a second run. Press F5 for the panel. Watching the URL for
