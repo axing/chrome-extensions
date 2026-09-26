@@ -109,7 +109,7 @@
     try {
       localStorage.setItem(AV_OFF_KEY, value ? '1' : '0');
     } catch (e) {
-      /* private mode, or the site's storage is blocked — preference is lost */
+      /* Private mode or blocked site storage prevents saving the preference. */
     }
   }
 

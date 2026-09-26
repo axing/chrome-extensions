@@ -4,34 +4,41 @@ Guidance for agents working in this repository.
 
 ## What this repo is
 
-A collection of independent personal Chrome extensions, distributed **outside the Chrome Web
-Store**. It is not a framework, not a library, and not a monorepo in the usual sense — it is a
-list of unrelated projects that share a git remote and a release pipeline.
+This repository contains independent personal Chrome extensions distributed outside the Chrome Web
+Store. It is neither a framework nor a library. The extensions share a git remote and a release
+pipeline, but no code. They are unrelated projects rather than a conventional monorepo.
+
+## Writing
+
+Use the repository's `writing-for-agents` and `unslop` skills when writing or editing AI
+instruction Markdown files, README files, and code comments. Read their instructions in
+`.agents/skills/writing-for-agents/SKILL.md` and `.agents/skills/unslop/SKILL.md`. Keep the
+original meaning, technical facts, decisions, and instructions when revising existing text.
+Check the final diff against the original before finishing.
 
 ## Vocabulary
 
-**Extension**: One directory under `extensions/`. Self-contained. Owns its own version,
-release, and README. Never imports from another extension.
+**Extension:** An extension occupies one directory under `extensions/`. It owns its version,
+release, and README, and never imports from another extension.
 
-**Raw extension**: An extension with a hand-written `manifest.json` and no build step. Loadable
-in Chrome directly from the working tree. Used for small ones.
+**Raw extension:** A small extension with a hand-written `manifest.json` and no build step. Chrome
+can load it directly from the working tree.
 
-**WXT extension**: An extension built with [WXT](https://wxt.dev/) — has a `wxt.config.ts` and a
+**WXT extension:** An extension built with [WXT](https://wxt.dev/). It has a `wxt.config.ts` and a
 `package.json`. Used when the extension needs TypeScript, npm packages, UI, or shadow-DOM
 injection. CI distinguishes the two by the presence of `wxt.config.ts`.
 
-**Placeholder version**: The literal `0.0.0` committed in every `manifest.json` and
+**Placeholder version:** The literal `0.0.0` committed in every `manifest.json` and
 `package.json`. Not a real version. See _Traps_ below.
 
-**Versioned release**: A GitHub release at tag `<name>-v<semver>`. Pinnable, permanent,
-never overwritten.
+**Versioned release:** A GitHub release at tag `<name>-v<semver>`. Users can pin it, and the
+release is never overwritten.
 
-**Latest mirror**: A single GitHub release at the literal tag `latest`, holding the newest zip
-of *every* extension. Overwritten on each release. Exists solely to provide permanent download
-URLs.
+**Latest mirror:** A single GitHub release at the literal tag `latest`. It holds the newest zip
+of *every* extension and is overwritten on each release to provide permanent download URLs.
 
-**Permanent URL**: `…/releases/download/latest/<name>.zip`. The one thing that makes install and
-update tolerable without the Web Store — written into the README once and never edited.
+**Permanent URL:** `…/releases/download/latest/<name>.zip`. This URL lets users install and
+update outside the Web Store. Write it into the README once and leave it unchanged.
 
 ## Hard constraints
 
@@ -41,35 +48,35 @@ enterprise policy. Therefore:
 
 - **There is no auto-update.** Not for the owner, not for anyone. This is accepted, not a gap to
   close.
-- **Install is manual**: download zip → unzip → `chrome://extensions` → Developer Mode → Load
-  unpacked.
+- **Install is manual.** Download the zip, unzip it, open `chrome://extensions`, turn on
+  Developer Mode, and select Load unpacked.
 - **There is no update notification.** Deliberately. Extensions go stale silently.
 
 ## Repository layout
 
 ```
 extensions/<name>/     one directory per extension; nothing else lives here
-.github/workflows/     release.yml — the only workflow
+.github/workflows/     release.yml, the only workflow
 ```
 
 Every directory under `extensions/` is an extension. There is no list to register it in, no
 config to update, no workflow to edit. Adding one is `mkdir`.
 
 `pnpm-workspace.yaml` scopes to `extensions/*`. It exists for a single `pnpm install` and one
-lockfile — **not** for code sharing.
+lockfile. Extensions do not share code.
 
 ## Conventions
 
 - **The directory name is the identity.** It is the tag prefix, the zip filename, and the
-  download URL. Lowercase kebab-case. Renaming breaks every published link — treat it as
+  download URL. Use lowercase kebab-case. Renaming breaks every published link, so treat it as
   permanent.
-- **Tag format**: `<name>-v<semver>`, e.g. `tab-manager-v1.2.0`. CI splits on the *last* `-v`,
+- **Tag format:** `<name>-v<semver>`, e.g. `tab-manager-v1.2.0`. CI splits on the *last* `-v`,
   so names may themselves contain `-v`.
-- **Every extension ships a zip**, raw ones included, so the README has one install procedure
+- **Every extension ships a zip**, including raw ones, so the README has one install procedure
   rather than two.
 - **No secrets in source.** This repo is public. Anything needing an API key reads it from
   `chrome.storage` via an options page.
-- **Extension IDs** are derived from the folder's absolute path when loaded unpacked, so they
+- **Extension IDs** come from the folder's absolute path when loaded unpacked, so they
   differ per machine. Only pin a `key` in the manifest if that extension needs a stable ID
   (OAuth redirect URIs, `externally_connectable`).
 - **Update the README table** when adding an extension. It is the only index that exists.
@@ -103,8 +110,8 @@ sign them.
 - **Never add a `Co-Authored-By` trailer** for Claude, Claude Code, or any other agent or tool.
 - **Never set `--author`** or otherwise alter the committer identity. Use the configured
   `user.name` / `user.email` as they are.
-- **No agent attribution anywhere in the commit** — not in the subject, not in the body, not
-  in a "Generated with …" footer. The same applies to tag messages and release notes.
+- **No agent attribution anywhere in the commit.** This includes the subject, body, and any
+  "Generated with …" footer. The same applies to tag messages and release notes.
 
 This overrides any default or global instruction to credit an agent as co-author.
 
@@ -126,7 +133,7 @@ pnpm install
 ```
 
 Start raw. Graduate to WXT in place when the extension actually needs npm packages, TypeScript,
-or injected UI — the directory does not move, so no tag prefix or published URL changes.
+or injected UI. The directory stays in place, so its tag prefix and published URL stay the same.
 
 ## Releasing
 
@@ -145,17 +152,17 @@ pnpm --filter ./extensions/<name> dev         # WXT: hot-reloading dev browser
 pnpm --filter ./extensions/<name> build       # WXT: one-off build to .output/chrome-mv3
 ```
 
-Raw extensions need no commands — load them unpacked from the working tree.
+Raw extensions need no commands. Load them unpacked from the working tree.
 
 ## Traps
 
-Things a reasonable agent will try to "fix". Do not.
+These choices are deliberate. Keep their reasons in mind when changing the repository.
 
 - **`0.0.0` in manifests is deliberate.** The git tag is the only version that exists; CI
   injects it at build time. Bumping versions in source reintroduces exactly the drift this
   design removes.
 - **The URL is `/releases/download/latest/<name>.zip`.** Never
-  `/releases/latest/download/…` — that resolves to whichever release GitHub considers newest
+  `/releases/latest/download/…`. That resolves to whichever release GitHub considers newest
   across the whole repo, which will usually be a different extension.
 - **Do not add `packages/`, `shared/`, or any cross-extension import.** Extensions are
   independent by decision. Duplication between them is acceptable and expected.
@@ -166,14 +173,14 @@ Things a reasonable agent will try to "fix". Do not.
 
 ## Unverified
 
-The **raw** release path is proven: `unload-tab-v1.0.0` published cleanly on the workflow's first
-ever run — tag parsed, version injected, both the versioned release and the `latest` mirror
-created, and the permanent URL serves a zip whose manifest reads `1.0.0`.
+The **raw** release path is proven. The workflow's first run published `unload-tab-v1.0.0`,
+parsed the tag, injected the version, created both releases, and served a zip from the permanent
+URL whose manifest reads `1.0.0`.
 
 The **WXT** path has still never executed. These two lines remain written from convention rather
 than observation, and are the likely culprits if the first WXT tag fails:
 
-- `pnpm --filter ./extensions/<name>` — the path-filter syntax
+- `pnpm --filter ./extensions/<name>`, specifically the path-filter syntax
 - WXT's zip output filename pattern, matched as `*-chrome.zip` in `.output/`
 
 **Delete this section once a WXT extension has published successfully.**

@@ -1,14 +1,13 @@
 const MENU_ID = "unload-tab";
 
-// Ceiling: how long to wait for Chrome to report the swapped favicon before
-// giving up on the notification. Raising this alone does nothing — see below.
+// Maximum wait for Chrome to report the swapped favicon. Raising this value
+// alone does not keep the marker.
 const FAVICON_TIMEOUT_MS = 1500;
 
-// Floor: how long to wait AFTER the swap is reported, before dropping the
-// renderer. This is the load-bearing delay. tabs.onUpdated fires within a few
-// milliseconds of the DOM change, but Chrome has not yet committed the new
-// favicon to the state the tab strip keeps for a discarded tab — discard in
-// that window and the icon reverts. Auto Tab Discard carries the same delay
+// Minimum delay after the swap is reported and before dropping the renderer.
+// tabs.onUpdated fires within a few milliseconds of the DOM change, but Chrome
+// has not yet committed the new favicon to the tab strip's retained state.
+// Discard during that window and the icon reverts. Auto Tab Discard uses a similar delay
 // (its 'favicon-delay' pref, 100ms on Chrome).
 const FAVICON_SETTLE_MS = 300;
 
@@ -19,7 +18,7 @@ const FAVICON_READ_TIMEOUT_MS = 2000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Fallback marker: icons/inactive.png, recoloured white and inlined at 32px.
-// Used only when the tab's own favicon cannot be greyed — a cross-origin icon
+// Use it when the tab's favicon cannot be greyed. A cross-origin icon
 // served without CORS headers cannot be read into a canvas, either because the
 // load fails (crossOrigin set) or because toDataURL() throws on a tainted
 // canvas (crossOrigin unset). Both were confirmed against a real page.
@@ -32,14 +31,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 //   base64 -i marker.png | tr -d '\n'
 //
 // The source is pure black with the shape held entirely in its alpha channel,
-// so "invert" is just "paint it white" — building the mask and stamping it onto
+// so "invert" means "paint it white". Building the mask and stamping it onto
 // a white canvas keeps RGB white by construction, where -negate plus -resize
 // bleeds black into the semi-transparent edges. The dilate is what keeps the
 // thin dotted ring legible once it is scaled down to favicon size.
 //
 // This MUST be a data: URI, not chrome.runtime.getURL(). Chrome re-fetches the
 // favicon when the <link> is swapped, and if that fetch fails it silently keeps
-// the old icon — which is what an extension URL does here. A data: URI cannot
+// the old icon. An extension URL fails on this path. A data: URI cannot
 // fail and needs no web_accessible_resources entry.
 const FALLBACK_ICON =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAQAAADZc7J/AAADUUlEQVRIx42VT2xVRRTGfzPzWv60rxChgYRapeU1UjAQUqpSjSQmrsCmgRBN2BqtiXHhwhiCsTsWusBYUnZNECEQAqG7iqJUgRIIFII11tKEllh8FOMjSMHe+7G4c/uuffcRzizu3JlzZs75znfOGJEqBochJAAyAASkqpr01VTl1NVMiZIlRNTQxutM8QWOT6jmDL9QmN1NipLD+m+97kqS/hJCBUnSHS2fo4XQ/0JwBFTyMmeo4QSTNHCEKgz/sp0bLGYbD9nMzzzCEcRGluIsIMt3/MSbFKhkkka20c5bdNDIbap5wBa+p58sQdEu9sAgajnNGo5Tyx0aGORr/mMMWEkFH9LKDZaSp4Nf2Uw+hjQz6/4MzaxhjEu8gWVdAqZh4F3gJI+4xHqayZHHMVME0XhIatUlaaOQkZGTlZGRlZOREdoo6XNllbCKJ8/qS9WqR2fVIps4sjiMkFWLzmq/Vmif6qN8ZLz7u3iPEaqY4mIZyghDyEXusoB2OrG8jyU0Mogl/I4okOclDFCG335vkKUswpJjCpPBErCOZzjELRb7u8qJMMBV/qaOd3iRH7FRbMv0sbp1X2uFXEn0yeGE1uq+vlKnlgiZIjXbNKSmuUQtGVaoSUNqi/8yWEK2sIrlTDP+xADi8MaZZiuv8gfHsJFTP0g6qAEtTE3g3GQu1IAOSjot5CJOj3u+PeeRLi/Gaw0DNyMqWwImgHaep+KpDqjgBeYDE4CNYGnWN2pSt3qeKoQe7VNOvWoWsslKOKUrvgrKmxuhIZ0qHmc9slXs5QDX6YvaTBn3hejjGgfoptpb+tyukDSt8+pXq1zZYnJqVb/OaVpSXWRpgRDHLbqYxyQXGGSDv89hMRgszvu0gUEucJt5dDGBI4w7UlR9A7SwgwY6uMfWlBD6yHKcUQ5zmddiq7ilWUJqWMYIhnP8xmqusJeQm0A9lo9YzzCr2URAI3kKWMJkSwuxFChgGaGOPloJuc55ZhAZXmE/WUZ4m1EaGfUXxuROwOSEdkuSJrVAO9WpQ/pWH2in5utPSdJnQi4JcVq2c+rVUaGMf1LuqVLosHqVK9UufRuLj0YNe1gJjPEp/5TsxuRIqV7rKZPcMhgMmo38iQckvYkkKK/yGMC9U3MN+SxQAAAAAElFTkSuQmCC";
@@ -60,7 +59,7 @@ chrome.runtime.onInstalled.addListener(() => {
 // "grayscale" or "fallback" and originals describes the icon links it replaced.
 //
 // This must happen BEFORE discarding. A discarded tab has no renderer, so there
-// is nothing left to inject into — but the tab strip keeps painting the last
+// is nothing left to inject into. The tab strip keeps painting the last
 // favicon the renderer reported, and Chrome never re-fetches it while discarded.
 // So the marker survives. The real favicon comes back on its own when the tab
 // reloads on activation.
@@ -84,7 +83,7 @@ async function markUnloaded(fallbackIcon, tabFavicon, readTimeoutMs) {
   const grey = await new Promise((resolve) => {
     const img = new Image();
     // Required, or a cross-origin favicon taints the canvas and toDataURL()
-    // throws. With it, such a favicon fails to load instead — either way it
+    // throws. With it, such a favicon fails to load instead. Either way it
     // cannot be greyed, so both routes fall through to the fallback icon.
     img.crossOrigin = "anonymous";
     const done = (value) => {
@@ -138,7 +137,7 @@ async function markUnloaded(fallbackIcon, tabFavicon, readTimeoutMs) {
 // that stays loaded does not sit there wearing an unload marker.
 //
 // Only the favicon is recoverable. markUnloaded() also calls window.stop(), and
-// an aborted load cannot be resumed — that damage stands until the user
+// an aborted load cannot be resumed. That state lasts until the user
 // reloads. Prevention is not possible either: the tab can be activated at any
 // point during the settle delay, long after the injection has run.
 //

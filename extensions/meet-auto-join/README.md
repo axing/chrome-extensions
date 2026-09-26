@@ -1,103 +1,95 @@
 # Google Meet Auto Join
 
-A panel on the Google Meet pre-call screen. Set a time, tick a box, walk away. At that time it
-clicks **Join** for you.
+The extension adds a panel to the Google Meet pre-call screen. Set a time and enable auto join.
+At that time, it clicks **Join** for you.
 
-Grown out of a Tampermonkey userscript, so it does one small thing and asks for nothing it does
-not need.
+It began as a Tampermonkey userscript and requests only the access this task needs.
 
 ## What it does
 
 - Appears on the Meet "green room" screen, bottom right, once per tab load.
-- The time field starts at one minute from now. Change it to whatever you like.
-- Tick **Enable auto join** and it counts down out loud in the status line. Pressing Enter in
-  the time field ticks that box for you, so setting a time is one gesture.
+- The time field starts at one minute from now. You can change it.
+- Tick **Enable auto join** to show the countdown in the status line. Pressing Enter in the time
+  field also enables auto join.
 - Tick **Turn mic and camera off** and it switches off whichever of the two is currently on.
   That choice is remembered for next time.
 - At the target time it clicks the join control, then removes itself.
 - It also removes itself if you join by hand, or press the **×**.
 
-The join control is matched by its visible label, so it copes with **Join now**, **Ask to join**
-and **Join anyway** alike.
+The extension finds the join control by its visible label. It recognizes **Join now**, **Ask to
+join**, and **Join anyway**.
 
 ## Permissions
 
-None declared. The only thing Chrome asks about is the content-script match,
+The manifest declares no permissions. Chrome asks about the content script's site match,
 `https://meet.google.com/*`, which it presents as **"Read and change your data on
 meet.google.com"**.
 
-The saved checkbox lives in `localStorage` on `meet.google.com`, which a content script already
-shares with the page. That keeps the `storage` permission out of the manifest. Clearing site
-data for Meet forgets the setting; re-ticking the box is the whole recovery.
+The extension saves the checkbox in `localStorage` on `meet.google.com`, which the content script
+shares with the page. It therefore needs no `storage` permission. Clearing Meet's site data
+removes the setting; tick the box again to restore it.
 
 ## Install
 
 1. Download `meet-auto-join.zip` from the [latest
    release](https://github.com/axing/chrome-extensions/releases/download/latest/meet-auto-join.zip).
-2. Unzip it somewhere you intend to **keep** — deleting the folder uninstalls the extension.
+2. Unzip it into a folder you intend to keep. Deleting the folder uninstalls the extension.
 3. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and select
    the unzipped folder.
 
 ## Verified against real Meet
 
-The DOM selectors here were confirmed working in Chrome against a live Meet pre-call screen on
-**2026-09-02**, at `v1.0.0`: the panel appeared, the countdown armed, and **Turn mic and camera
-off** switched both devices off.
+The DOM selectors worked in Chrome against a live Meet pre-call screen on **2026-09-02**, at
+`v1.0.0`. The panel appeared, the countdown started, and **Turn mic and camera off** switched
+both devices off.
 
-That date matters. Meet's markup is not a public API, so if this ever stops working the cause is
-Google changing the page, not a selector that was always wrong. Start by re-reading
-`data-is-muted` and the `aria-label` text on the real buttons before rewriting anything.
+Meet's markup is not a public API and may change. If the extension stops working, inspect
+`data-is-muted` and the real buttons' `aria-label` text before changing the selectors.
 
 ## Traps
 
-Things a reasonable agent (or a future you) will try to "fix". Do not.
+These choices are deliberate. Keep their reasons in mind when changing the extension.
 
-- **The time field is set once and never refreshed, by decision.** The userscript this grew from
-  rewrote the field every second so it always read "now + 1 minute". That is what produced its
-  famous `--:--` bug, and an input that rewrites itself while you are typing in it is its own
-  problem. The field is now written once, when the panel appears. It therefore goes stale if the
-  panel sits untouched, and the panel says *"That time has already passed"* rather than guessing
-  a new time for you. That warning is the designed behaviour, not a missing feature.
+- **The time field is set once when the panel appears.** The earlier userscript rewrote it every
+  second to show "now + 1 minute". That caused the `--:--` bug and changed the input while a user
+  typed. The current value can become stale if the panel sits untouched. In that case, the panel
+  says *"That time has already passed"* instead of choosing a new time.
 - **The old bug was string arithmetic, not the ticker.** `pad2(getMinutes() + 1)` produces
-  `"09:60"` at 09:59, which `<input type="time">` rejects and renders as `--:--`. It fired **24
-  times a day**, once every hour at `:59`, and once more at 23:59 for the hour. `defaultTimeValue()`
-  now adds 60000 to the epoch and reads the fields back off the resulting `Date`, so the rollover
-  is the platform's problem. Never reintroduce arithmetic on the padded string.
-- **Timing uses a repeating tick, not one long `setTimeout`.** This looks like the more
-  complicated choice and it is the correct one. Chrome throttles a tab you have not looked at for
-  five minutes down to roughly one wake-up per minute, **aligned to the whole minute**. Targets
-  here are always whole minutes, so the aligned wake-up lands on the target — but a one-shot timer
-  aimed at 10:00:00.000 can be rounded *past* its own moment and land at 10:01. A tick that asks
-  "is it time yet?" against the wall clock cannot overshoot: it is already sitting on that
-  boundary. `JOIN_TOLERANCE_MS` fires the click up to a second early to absorb the millisecond
-  either side. Do not "simplify" this back to a single timer.
-- **`setAccurateInterval`'s drift correction is not what defeats the throttling.** It keeps a
-  repeating tick from slowly sliding off the second over a long countdown, which matters for the
-  countdown text. The throttling is survived by the *shape* — a poll against the clock — not by
-  the correction. Both are worth having; do not confuse them.
-- **Retries are bounded by wall clock, not by attempt count.** `JOIN_WINDOW_MS` is 30 seconds of
-  real time. Counting 30 attempts instead would run for half an hour in a throttled tab, because
-  the tab only ticks once a minute.
+  `"09:60"` at 09:59, which `<input type="time">` rejects and renders as `--:--`. It occurred
+  once each hour at `:59`, including 23:59, for 24 times a day. `defaultTimeValue()` now adds
+  60000 to the epoch and reads the fields from the resulting `Date`, which handles the rollover.
+  Keep arithmetic on the timestamp rather than the padded string.
+- **Timing uses a repeating tick.** Chrome throttles a tab that has been hidden for five minutes
+  to roughly one wake-up per minute, aligned to the whole minute. Targets are whole minutes, so
+  the aligned wake-up lands on the target. A single `setTimeout` aimed at 10:00:00.000 can be
+  rounded past that moment and run at 10:01. The repeating tick checks the wall clock on each
+  wake-up. `JOIN_TOLERANCE_MS` allows a click up to one second early to absorb rounding around
+  the boundary. Keep the repeating tick.
+- **`setAccurateInterval` corrects drift in the countdown.** It keeps the tick aligned to the
+  second over a long countdown. Checking the wall clock on each tick handles tab throttling.
+  Keep both behaviors.
+- **Retries use a wall-clock deadline.** `JOIN_WINDOW_MS` is 30 seconds of real time. In a
+  throttled tab, 30 attempts could take half an hour because the tab may tick once a minute.
 - **Mic and camera are read before they are clicked.** `isAvOn()` checks `data-is-muted`, falling
   back to whether the label starts with "Turn off". A blind click would switch **on** a device
   that some other extension had already switched off. If you use one of those, this one stays out
   of its way.
-- **Mic and camera are switched off once, when the panel appears — not again at join time.** If
-  you deliberately turn your camera back on after that, auto-join will not fight you.
-- **The panel does not come back for a second meeting in the same tab, by decision.** Meet is a
-  single-page app; leaving a call and opening another meeting does not reload the document, and
+- **Mic and camera are switched off once, when the panel appears.** If you deliberately turn your
+  camera back on after that, auto join leaves it on.
+- **The panel does not return for a second meeting in the same tab.** Meet is a single-page app.
+  Leaving a call and opening another meeting does not reload the document, and
   `window.__meetAutoJoinLoaded` blocks a second run. Press F5 for the panel. Watching the URL for
   meeting-code changes was considered and dropped as more moving parts than it is worth.
-- **Nothing survives a reload, by decision.** The armed time is not saved anywhere. If the tab
+- **The armed time does not survive a reload.** The time is not saved anywhere. If the tab
   reloads, arm it again. Saving it would mean a per-meeting-code store and code to expire old
   entries, for a case that rarely happens on a pre-call screen.
-- **A past time is rejected, never rolled to tomorrow.** `23:59` as a default therefore warns
+- **A past time is rejected rather than rolled to tomorrow.** `23:59` as a default therefore warns
   instead of arming, since `00:00` today is in the past. That is a one-minute-a-day edge and the
   warning is the right answer to it.
 - **The exact join label is preferred over a loose match.** `findJoinButton()` looks for an exact
   text match first. A loose match can land on an outer wrapper whose text merely *contains* the
   button's, and clicking a wrapper does nothing.
-- **There is no calendar integration**, and adding it was considered and rejected. It would mean
+- **There is no calendar integration.** Adding it was considered and rejected. It would mean
   OAuth, a Google API client, token refresh, and a background worker, to replace one click on a
   link you already have in the invite.
 - **`"version": "0.0.0"` in the manifest is deliberate.** The git tag is the only version; CI

@@ -1,6 +1,6 @@
 name: Release
 
-# Tag format: <extension-dir>-v<semver>   e.g.  tab-manager-v1.2.0
+# Tags use <extension-dir>-v<semver>, for example tab-manager-v1.2.0.
 on:
   push:
     tags:
@@ -27,8 +27,8 @@ jobs:
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
 
-          # Split on the LAST "-v" so extension names may themselves contain
-          # "-v" (e.g. vim-mode-v2.0.0 -> vim-mode / 2.0.0).
+          # Split on the last "-v" so extension names can contain "-v".
+          # For example, vim-mode-v2.0.0 yields vim-mode and 2.0.0.
           name="${tag%-v*}"
           version="${tag##*-v}"
 
@@ -94,8 +94,8 @@ jobs:
             '.version == $v' > /dev/null \
             || { echo "::error::Built manifest version does not match tag"; exit 1; }
 
-      # Two destinations: a pinnable versioned release, and a rolling mirror at
-      # the literal tag "latest" that gives every extension a permanent URL:
+      # Publish a pinnable versioned release and update the mirror at the
+      # literal tag "latest". Each extension has a permanent URL there:
       #   .../releases/download/latest/<name>.zip
       - name: Publish
         env:
