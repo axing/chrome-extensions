@@ -83,6 +83,12 @@ lockfile. Extensions do not share code.
 
 ## Git workflow
 
+- At the start of each new task, use [grill-with-docs](.agents/skills/grill-with-docs/SKILL.md)
+  to examine the owner's initial plan and requirements. Follow its `grilling` and
+  `domain-modeling` dependencies until the open decisions are resolved. Present the agreed plan
+  and wait for the owner to confirm the shared understanding and approve it.
+- After plan approval, use [implement](.agents/skills/implement/SKILL.md) to carry out the work.
+  Follow this repository's review and commit steps below when they differ from that skill.
 - Work on a branch for every task that changes tracked files, including small documentation
   changes. Create one branch per task when starting from `main` or when no branch was designated.
   If the owner designates an existing branch, use it.
