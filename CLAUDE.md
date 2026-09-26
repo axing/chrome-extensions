@@ -102,6 +102,26 @@ lockfile. Extensions do not share code.
   cleanly before pushing. Stop and report conflicts or uncertainty about someone else's work.
   Never force-push.
 
+### Handoff
+
+For every task that changes tracked files, read [`HANDOFF.md`](HANDOFF.md) when starting. Check
+its claims against the current branch, working tree, and relevant files. Correct stale claims
+before continuing.
+
+Read and follow the repository's [handoff skill](.agents/skills/handoff/SKILL.md) to create and
+maintain the tracked root `HANDOFF.md`. For this repository, that file replaces the skill's OS
+temporary directory destination. Follow the skill's other rules: suggest relevant skills, link
+to existing artifacts instead of copying them, and redact sensitive information.
+
+- Keep `In flight` current while working. Record the task goal, branch, progress, next action, and
+  blockers. Update it after meaningful progress or a change of direction, including when work is
+  ready for owner review.
+- Keep `Open items` to concrete tasks planned for the next session. Remove completed, abandoned,
+  and stale items. Use `None` when there are no such tasks.
+- When the owner says `wrap it up` and the work is ready to merge, clear `In flight` and refresh
+  `Open items` before committing. Then follow the commit, push, and merge steps above. If those
+  steps leave work unresolved, record the active issue in `In flight` again.
+
 ### Commit authorship
 
 Every commit is authored solely by the repository owner. Agents write commits; they do not
