@@ -10,6 +10,10 @@ const paddingXPath = '/html/body/div[1]/c-wiz/div/div/div[22]/div[3]/div/div[3]/
 function loadPanel(saved = {}, hasFooter = true, hasPaddingTarget = true) {
   const elements = [];
   const storage = new Map(Object.entries(saved));
+  let now = Date.now();
+  class TestDate extends Date {
+    static now() { return now; }
+  }
   const mutationObservers = [];
   const notifyMutations = () => {
     for (const observer of mutationObservers) {
@@ -114,12 +118,13 @@ function loadPanel(saved = {}, hasFooter = true, hasPaddingTarget = true) {
     getItem(key) { return storage.get(key) ?? null; },
     setItem(key, value) { storage.set(key, value); },
   };
-  vm.runInNewContext(source, { window, document, localStorage, Date, console });
+  vm.runInNewContext(source, { window, document, localStorage, Date: TestDate, console });
   poll();
 
   return {
     storage,
     devices,
+    advanceClock(ms) { now += ms; },
     manualJoin() { document.listeners.click({ target: joinButton }); },
     get paddingTarget() { return paddingTarget; },
     addPaddingTarget() { hasPaddingTarget = true; notifyMutations(); },
@@ -158,6 +163,51 @@ test('minute arrow steps carry across the hour', () => {
   }
 });
 
+test('wheel steps one minute in each direction at most once per 250 ms', () => {
+  const { time, advanceClock } = loadPanel();
+  let prevented = 0;
+  const wheel = (deltaY) => time.dispatch('wheel', {
+    deltaY,
+    preventDefault() { prevented++; },
+  });
+
+  time.value = '10:59';
+  wheel(-1);
+  assert.equal(time.value, '11:00');
+  wheel(-1);
+  assert.equal(time.value, '11:00');
+  advanceClock(249);
+  wheel(-1);
+  assert.equal(time.value, '11:00');
+  advanceClock(1);
+  wheel(-1);
+  assert.equal(time.value, '11:01');
+  advanceClock(250);
+  wheel(1);
+  assert.equal(time.value, '11:00');
+  advanceClock(250);
+  time.value = '00:00';
+  wheel(1);
+  assert.equal(time.value, '23:59');
+  advanceClock(250);
+  wheel(-1);
+  assert.equal(time.value, '00:00');
+  assert.equal(prevented, 7);
+});
+
+test('wheel changes update an armed auto join time', () => {
+  const { panel, time, checkboxes } = loadPanel();
+  const status = panel.children[0].children[2];
+  checkboxes[0].checked = true;
+  checkboxes[0].dispatch('change');
+  const previousStatus = status.textContent;
+
+  time.dispatch('wheel', { deltaY: -1, preventDefault() {} });
+
+  assert.match(status.textContent, /Auto join armed for/);
+  assert.notEqual(status.textContent, previousStatus);
+});
+
 test('Enter in the time field toggles auto join', () => {
   const { time, checkboxes } = loadPanel();
   const autoJoin = checkboxes[0];
@@ -165,6 +215,16 @@ test('Enter in the time field toggles auto join', () => {
   assert.equal(autoJoin.checked, true);
   time.dispatch('keydown', { key: 'Enter', preventDefault() {} });
   assert.equal(autoJoin.checked, false);
+});
+
+test('double-clicking the time field enables auto join', () => {
+  const { panel, time, checkboxes } = loadPanel();
+  const autoJoin = checkboxes[0];
+  time.dispatch('dblclick');
+  assert.equal(autoJoin.checked, true);
+  assert.doesNotMatch(panel.children[0].children[2].textContent, /Idle/);
+  time.dispatch('dblclick');
+  assert.equal(autoJoin.checked, true);
 });
 
 test('the panel stays centered above the footer with separate saved device choices', () => {

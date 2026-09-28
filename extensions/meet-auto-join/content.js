@@ -454,6 +454,20 @@
     paddingObserver.observe(document.body, { childList: true, subtree: true });
 
     let arrowStep = null;
+    let lastWheelStep = -Infinity;
+    timeInput.addEventListener('wheel', function (event) {
+      event.preventDefault();
+      if (!timeInput.value || event.deltaY === 0) return;
+      const now = Date.now();
+      if (now - lastWheelStep < 250) return;
+
+      const [hours, minutes] = timeInput.value.split(':').map(Number);
+      const step = event.deltaY < 0 ? 1 : -1;
+      const totalMinutes = (hours * 60 + minutes + step + 1440) % 1440;
+      timeInput.value = pad2(Math.floor(totalMinutes / 60)) + ':' + pad2(totalMinutes % 60);
+      lastWheelStep = now;
+      applyState();
+    }, { passive: false });
     timeInput.addEventListener('input', function () {
       if (arrowStep) {
         const before = arrowStep.value.split(':').map(Number);
@@ -469,6 +483,10 @@
       applyState();
     });
     timeInput.addEventListener('change', applyState);
+    timeInput.addEventListener('dblclick', function () {
+      enableCheckbox.checked = true;
+      applyState();
+    });
     timeInput.addEventListener('keydown', function (event) {
       arrowStep = event.key === 'ArrowUp' || event.key === 'ArrowDown'
         ? { key: event.key, value: timeInput.value }
