@@ -107,6 +107,9 @@ lockfile. Extensions do not share code.
   push `main` to `origin`. If remote `main` has advanced, fetch and reconcile the histories
   cleanly before pushing. Stop and report conflicts or uncertainty about someone else's work.
   Never force-push.
+- After pushing `main`, release each extension changed by the task using the steps in
+  [Releasing](#releasing). The owner's `wrap it up` authorizes tagging and publishing those
+  releases. Skip releases for tasks that only change repository guidance or tooling.
 
 ### Handoff
 
@@ -163,12 +166,24 @@ or injected UI. The directory stays in place, so its tag prefix and published UR
 
 ## Releasing
 
+Fetch tags from `origin` and identify each extension changed by the task from its directory
+under `extensions/`. Choose the next version from that extension's highest published version.
+Use a patch bump for fixes, a minor bump for new backward-compatible features, and a major bump
+for breaking changes. Use `1.0.0` for its first release, unless the owner specifies a version.
+
+Create each `<name>-v<semver>` tag at the merged task commit on `main`. Push only that tag:
+
 ```sh
-git tag <name>-v1.0.0 && git push --tags
+git tag <name>-v<semver> <merged-task-commit>
+git push origin refs/tags/<name>-v<semver>
 ```
 
 CI parses the tag, injects the version into the built manifest, and publishes to both the
 versioned release and the latest mirror. Nothing else is needed and nothing is edited by hand.
+
+Wait for the tag's release workflow to succeed. Verify that both the versioned release and
+the `latest` mirror contain `<name>.zip`, then report the tag and download links to the owner.
+If publishing fails, report the failure and record it in `HANDOFF.md` under `In flight`.
 
 ## Commands
 
