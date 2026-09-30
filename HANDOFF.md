@@ -6,7 +6,9 @@ None.
 
 ## Open items
 
-None.
+- Load [`extensions/middle-drag-scroll`](extensions/middle-drag-scroll) unpacked in Chrome and
+  check the gesture with a physical middle mouse button. Automated tests pass, but Chrome 154
+  ignores the `--load-extension` flag used by the headless browser check.
 
 ## Suggested skills
 
